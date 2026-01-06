@@ -1,0 +1,161 @@
+name: Evaluate Submission
+
+on:
+  pull_request_target:
+    paths:
+      - 'submissions/*.csv'
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      
+      - name: Fetch PR changes
+        run: |
+          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch
+          git checkout pr-branch -- submissions/ || echo "No submission changes in PR"
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas scikit-learn numpy
+      
+      - name: Fetch private validation data
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          # Clone the private repository containing ground truth labels
+          git clone --depth 1 https://${PRIVATE_REPO_TOKEN}@github.com/muuki2/gnn-ddi-private.git private_data
+          
+          # Copy the validation/test labels to the data directory
+          cp private_data/test_labels.csv data/test_labels.csv
+          cp private_data/valid_labels.csv data/valid_labels.csv
+          
+          echo "Ground truth files prepared from private repository"
+          
+          # Clean up
+          rm -rf private_data
+      
+      - name: Find submission file
+        id: find_submission
+        run: |
+          # Get the list of changed files in the PR
+          CHANGED_FILES=$(git diff --name-only main...pr-branch | grep 'submissions/.*\.csv' | head -n 1)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No CSV submission found in PR"
+            exit 1
+          fi
+          echo "submission_file=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "Found submission: $CHANGED_FILES"
+      
+      - name: Validate submission
+        run: |
+          SUBMISSION="${{ steps.find_submission.outputs.submission_file }}"
+          if [ ! -f "$SUBMISSION" ]; then
+            echo "Error: Submission file not found: $SUBMISSION"
+            exit 1
+          fi
+          
+          # Check file format
+          HEADER=$(head -n 1 "$SUBMISSION")
+          if [[ "$HEADER" != *"id"* ]] || [[ "$HEADER" != *"target"* ]]; then
+            echo "Error: Invalid submission format. Must have 'id' and 'target' columns"
+            exit 1
+          fi
+          echo "Submission format is valid"
+      
+      - name: Run scoring script
+        id: score
+        run: |
+          python scoring_script.py "${{ steps.find_submission.outputs.submission_file }}" | tee scoring_output.txt
+          SCORE=$(grep "SCORE:" scoring_output.txt | cut -d':' -f2)
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "Computed score: $SCORE"
+      
+      - name: Update leaderboard
+        env:
+          ACTOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          python update_leaderboard.py "${{ steps.find_submission.outputs.submission_file }}"
+      
+      - name: Commit leaderboard update
+        run: |
+          git config --local user.name "GitHub Actions Bot"
+          git config --local user.email "actions@github.com"
+          git checkout main
+          git add leaderboard.md
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update leaderboard: ${{ github.event.pull_request.user.login }} - Score: ${{ steps.score.outputs.score }}"
+            git push origin main
+          fi
+      
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const score = '${{ steps.score.outputs.score }}';
+            const participant = '${{ github.event.pull_request.user.login }}';
+            const submission = '${{ steps.find_submission.outputs.submission_file }}';
+            
+            const body = `## 🎯 Submission Evaluation Results
+            
+            **Participant:** @${participant}
+            **Submission:** \`${submission}\`
+            
+            ---
+            
+            ### Score
+            
+            | Metric | Value |
+            |--------|-------|
+            | **Macro F1 Score** | **${parseFloat(score).toFixed(4)}** |
+            
+            ---
+            
+            ✅ Your submission has been evaluated and the [leaderboard](../blob/main/leaderboard.md) has been updated.
+            
+            ### Baseline Comparison
+            | Model | Macro F1 |
+            |-------|----------|
+            | GraphSAGE | ~0.5500 |
+            | GCN | ~0.5200 |
+            | GIN | ~0.5400 |
+            
+            Can you beat them? 🚀
+            
+            ---
+            
+            *Tips for improvement:*
+            - Try different GNN architectures (GCN, GAT, GIN)
+            - Experiment with hyperparameters (learning rate, hidden dimensions)
+            - Consider class imbalance handling techniques
+            - Use data augmentation for molecular graphs
+            
+            Good luck! 🍀`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
