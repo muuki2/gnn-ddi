@@ -1,64 +1,88 @@
-# 🧬 GNN Molecular Graph Classification Challenge
+# GNN Molecular Graph Classification Challenge
 
 > **Predict BACE-1 enzyme inhibition using Graph Neural Networks**
 
-[![Leaderboard](https://img.shields.io/badge/📊-Leaderboard-blue)](leaderboard.md)
-[![Dataset](https://img.shields.io/badge/📦-OGB_MolBACE-green)](https://ogb.stanford.edu/docs/graphprop/#ogbg-mol)
+[![Leaderboard](https://img.shields.io/badge/Leaderboard-View-blue)](leaderboard.md)
+[![Dataset](https://img.shields.io/badge/Dataset-OGB_MolBACE-green)](https://ogb.stanford.edu/docs/graphprop/#ogbg-mol)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Automated-orange)](.github/workflows/evaluate.yml)
 
 ---
 
-## 🎯 Overview
+## Overview
 
-Welcome to the **GNN Molecular Graph Classification Challenge**! This is a mini-Kaggle-style competition where you'll build Graph Neural Networks to predict whether molecules inhibit the BACE-1 enzyme.
+Welcome to the **GNN Molecular Graph Classification Challenge** — a Kaggle-style competition designed to benchmark Graph Neural Network architectures on molecular property prediction.
 
 ### The Task
 
-Given a molecular graph where:
-- **Nodes** represent atoms
-- **Edges** represent chemical bonds
+Given a molecular graph $G = (V, E)$ where:
+- **Nodes** $V$ represent atoms with features $\mathbf{x}_v \in \mathbb{R}^d$ encoding atomic properties
+- **Edges** $E$ represent chemical bonds with features encoding bond types
 
-Your goal is to predict a **binary label** indicating whether the molecule is an active inhibitor of BACE-1 (Beta-secretase 1), an enzyme associated with Alzheimer's disease.
+Your goal is to learn a graph-level representation and predict a **binary label** $y \in \{0, 1\}$ indicating whether the molecule is an active inhibitor of BACE-1 (Beta-secretase 1), an enzyme associated with Alzheimer's disease.
 
-### 🏅 Prize
+### Prize
 
-> **Important:** Top performers will be invited to join a high-level research project aiming to submit to **NeurIPS 2026**!
+> **Top performers** will be invited to join a high-level research project aiming for publication at **NeurIPS 2026**.
 
 ---
 
-## 📊 Dataset
+## Dataset
 
 We use the **OGB MolBACE** dataset from the [Open Graph Benchmark](https://ogb.stanford.edu/):
 
 | Split | Molecules | Description |
 |-------|-----------|-------------|
-| Train | ~1,210 | For training your model |
-| Valid | ~151 | For validation/hyperparameter tuning |
-| Test | ~152 | For final evaluation (labels hidden) |
+| Train | 1,210 | For training your model |
+| Valid | 151 | For local validation and hyperparameter tuning |
+| Test | 152 | For final evaluation (**labels hidden**) |
 
-**Features:**
-- Node features: 9-dimensional vectors encoding atom properties (atomic number, chirality, etc.)
-- Edge features: Bond type information
-- Split method: Scaffold split (ensures test molecules are structurally different)
+### Molecular Features
 
-**Class Distribution:** The dataset is **imbalanced** (~30% positive class), making this a challenging task.
+Each molecule is represented as a graph with:
+- **Node features**: 9-dimensional vectors $\mathbf{x}_v \in \mathbb{R}^9$ encoding:
+  - Atomic number (type of atom)
+  - Chirality tag
+  - Degree, formal charge, number of H atoms
+  - Hybridization, aromaticity, and ring membership
+- **Edge features**: 3-dimensional vectors encoding bond type, stereochemistry, and conjugation
+
+### Scaffold Split
+
+The dataset uses a **scaffold split** based on molecular substructures, ensuring that:
+- Test molecules are **structurally different** from training molecules
+- This simulates real-world drug discovery scenarios
+- Prevents data leakage from similar molecular scaffolds
+
+### Class Imbalance
+
+The dataset is **imbalanced** with approximately 30% positive class (active inhibitors). This makes the task non-trivial — a naive classifier predicting all zeros would achieve ~70% accuracy but poor F1.
 
 ---
 
-## 📐 Evaluation Metric
+## Evaluation Metric
 
-Submissions are evaluated using **Macro F1 Score**:
+Submissions are evaluated using **Macro F1 Score**, which equally weights performance on both classes:
 
-$$F1_{macro} = \frac{1}{2}(F1_{class0} + F1_{class1})$$
+$$F1_{\text{macro}} = \frac{1}{2}\left(F1_{\text{class}_0} + F1_{\text{class}_1}\right)$$
 
-This metric:
-- Treats both classes equally
+where for each class $c$:
+
+$$F1_c = \frac{2 \cdot \text{Precision}_c \cdot \text{Recall}_c}{\text{Precision}_c + \text{Recall}_c}$$
+
+with:
+
+$$\text{Precision}_c = \frac{TP_c}{TP_c + FP_c}, \quad \text{Recall}_c = \frac{TP_c}{TP_c + FN_c}$$
+
+**Why Macro F1?**
+- Treats both classes equally regardless of sample size
 - Penalizes poor performance on the minority class
-- Is harder to optimize than accuracy for imbalanced data
+- More challenging than accuracy for imbalanced datasets
+- Standard metric in molecular property prediction benchmarks
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone the Repository
 
@@ -78,7 +102,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r starter_code/requirements.txt
 ```
 
-### 3. Run the Baseline
+### 3. Run the Baseline Models
 
 ```bash
 cd starter_code
@@ -96,10 +120,18 @@ python baseline.py --all
 ```
 
 This will:
-- Download the OGB MolBACE dataset
+- Download the OGB MolBACE dataset automatically
 - Train the selected GNN model for 50 epochs
 - Generate `{model}_submission.csv` in the `submissions/` folder
-- Print validation F1 score (~0.52-0.55 depending on model)
+- Report validation F1 score
+
+### Baseline Performance
+
+| Model | Validation Macro F1 |
+|-------|---------------------|
+| GCN | 0.6153 |
+| GIN | 0.6103 |
+| GraphSAGE | 0.5835 |
 
 ### 4. Explore the Data
 
@@ -118,11 +150,11 @@ print(f"Label: {graph.y.item()}")
 
 ---
 
-## 📝 How to Submit
+## Submission Process
 
 ### Step 1: Generate Predictions
 
-Create a CSV file with your predictions for the test set:
+Create a CSV file with predictions for all test molecules:
 
 ```csv
 id,target
@@ -132,8 +164,8 @@ id,target
 ...
 ```
 
-- `id`: Molecule ID (from test.csv)
-- `target`: Your prediction (0 or 1)
+- `id`: Molecule index from `data/test.csv`
+- `target`: Your binary prediction (0 or 1)
 
 ### Step 2: Submit via Pull Request
 
@@ -141,119 +173,181 @@ id,target
 2. Add your submission file to `submissions/` folder
    - Name it `your_github_username.csv`
 3. Create a **Pull Request** to the main repository
-4. Our automated system will:
-   - Evaluate your submission
-   - Comment with your score
-   - Update the [leaderboard](leaderboard.md)
 
-### Submission Format Example
+### Automated Evaluation
+
+When you open a Pull Request, the system automatically:
+
+1. **Validates** your submission format
+2. **Evaluates** against hidden test labels (stored in a private repository)
+3. **Comments** on your PR with your Macro F1 score
+4. **Updates** the [leaderboard](leaderboard.md) with your result
+
+The test labels are **never exposed** to participants — they are fetched from a private repository during GitHub Actions execution, ensuring fair evaluation.
+
+### Submission Format
 
 ```
 submissions/
-├── sample_submission.csv   # Example format
+├── sample_submission.csv   # Example format (152 predictions)
 └── your_username.csv       # Your submission
 ```
 
 ---
 
-## 🏆 Current Leaderboard
+## Current Leaderboard
 
-| Rank | Participant | Macro-F1 Score |
+| Rank | Participant | Macro F1 Score |
 |------|-------------|----------------|
-| 🥇 1 | *Baseline-GCN* | 0.6153 |
-| 🥈 2 | *Baseline-GIN* | 0.6103 |
-| 🥉 3 | *Baseline-GraphSAGE* | 0.5835 |
+| 1 | *Baseline-GCN* | 0.6153 |
+| 2 | *Baseline-GIN* | 0.6103 |
+| 3 | *Baseline-GraphSAGE* | 0.5835 |
 
-👉 [View Full Leaderboard](leaderboard.md)
+[View Full Leaderboard](leaderboard.md)
 
 ---
 
-## 💡 Tips & Ideas
+## Baseline GNN Architectures
 
-### GNN Architectures to Try
-- **GCN** (Graph Convolutional Network)
-- **GAT** (Graph Attention Network)
-- **GIN** (Graph Isomorphism Network) - often strong on molecular tasks
-- **MPNN** (Message Passing Neural Network)
-- **Ensemble methods**
+The competition provides three baseline GNN architectures. Below are their message-passing formulations.
+
+### Graph Convolutional Network (GCN)
+
+GCN (Kipf & Welling, 2017) performs spectral graph convolutions using a first-order approximation:
+
+$$\mathbf{h}_v^{(l+1)} = \sigma\left(\sum_{u \in \mathcal{N}(v) \cup \{v\}} \frac{1}{\sqrt{\hat{d}_v \hat{d}_u}} \mathbf{W}^{(l)} \mathbf{h}_u^{(l)}\right)$$
+
+where $\hat{d}_v = 1 + |\mathcal{N}(v)|$ is the augmented degree and $\mathbf{W}^{(l)}$ is a learnable weight matrix.
+
+### GraphSAGE
+
+GraphSAGE (Hamilton et al., 2017) learns to aggregate neighborhood features:
+
+$$\mathbf{h}_v^{(l+1)} = \sigma\left(\mathbf{W}^{(l)} \cdot \text{CONCAT}\left(\mathbf{h}_v^{(l)}, \text{AGG}\left(\{\mathbf{h}_u^{(l)} : u \in \mathcal{N}(v)\}\right)\right)\right)$$
+
+where AGG can be mean, max-pool, or LSTM aggregation. Our baseline uses mean aggregation.
+
+### Graph Isomorphism Network (GIN)
+
+GIN (Xu et al., 2019) achieves maximal expressive power among message-passing GNNs:
+
+$$\mathbf{h}_v^{(l+1)} = \text{MLP}^{(l)}\left((1 + \epsilon^{(l)}) \cdot \mathbf{h}_v^{(l)} + \sum_{u \in \mathcal{N}(v)} \mathbf{h}_u^{(l)}\right)$$
+
+where $\epsilon$ is a learnable scalar. GIN is as powerful as the Weisfeiler-Lehman graph isomorphism test.
+
+### Graph-Level Readout
+
+All models use global mean pooling for graph-level prediction:
+
+$$\mathbf{h}_G = \frac{1}{|V|} \sum_{v \in V} \mathbf{h}_v^{(L)}$$
+
+followed by a linear classifier: $\hat{y} = \sigma(\mathbf{w}^\top \mathbf{h}_G + b)$
+
+---
+
+## Tips and Ideas
+
+### Additional GNN Architectures
+- **GAT** (Graph Attention Network) — attention-weighted message passing
+- **MPNN** (Message Passing Neural Network) — edge-conditioned convolutions
+- **AttentiveFP** — designed specifically for molecular property prediction
+- **Ensemble methods** — combine multiple architectures
 
 ### Techniques to Consider
-- **Class weighting** for imbalanced data
-- **Data augmentation** (e.g., random edge dropping)
-- **Different pooling methods** (mean, sum, attention-based)
-- **Learning rate scheduling**
-- **Early stopping** on validation F1
-- **Feature engineering** with RDKit descriptors
+- **Class weighting** — address class imbalance via weighted cross-entropy
+- **Focal loss** — down-weight easy examples, focus on hard ones
+- **Data augmentation** — random edge dropping, node feature masking
+- **Different pooling** — sum pooling, attention-based pooling, Set2Set
+- **Virtual nodes** — add a global node connected to all atoms
+- **Learning rate scheduling** — cosine annealing, warm restarts
+- **Early stopping** — monitor validation F1 to prevent overfitting
 
 ### Resources
 - [PyTorch Geometric Documentation](https://pytorch-geometric.readthedocs.io/)
 - [OGB Leaderboard for MolBACE](https://ogb.stanford.edu/docs/leader_graphprop/#ogbg-molbace)
 - [Graph Neural Networks: A Review](https://arxiv.org/abs/1901.00596)
 - [GraphSAGE Paper](https://arxiv.org/abs/1706.02216)
+- [GIN Paper](https://arxiv.org/abs/1810.00826)
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 gnn-ddi/
 ├── data/
-│   ├── train.csv           # Training molecule IDs
-│   ├── valid.csv           # Validation molecule IDs  
-│   └── test.csv            # Test molecule IDs (no labels)
+│   ├── train.csv           # Training molecule indices
+│   ├── valid.csv           # Validation molecule indices
+│   ├── test.csv            # Test molecule indices (labels hidden)
+│   └── ogb/                # OGB dataset (auto-downloaded)
 ├── submissions/
-│   └── sample_submission.csv   # Example submission format
+│   ├── sample_submission.csv
+│   ├── gcn_submission.csv
+│   ├── gin_submission.csv
+│   └── graphsage_submission.csv
 ├── starter_code/
 │   ├── baseline.py         # Baseline models (GraphSAGE, GCN, GIN)
 │   └── requirements.txt    # Python dependencies
+├── scripts/
+│   └── generate_labels.py  # Label generation utility
 ├── .github/
 │   └── workflows/
 │       └── evaluate.yml    # Automated scoring workflow
-├── scoring_script.py       # Evaluation script
-├── update_leaderboard.py   # Leaderboard update script
+├── scoring_script.py       # Evaluation script (Macro F1)
+├── update_leaderboard.py   # Leaderboard update utility
 ├── leaderboard.md          # Current standings
-└── README.md               # This file
+└── README.md
 ```
+
+### Hidden Infrastructure
+
+Test and validation labels are stored in a **private repository** (`gnn-ddi-private`) and are only accessed during GitHub Actions evaluation. This ensures:
+- Participants cannot access ground truth labels
+- Fair and tamper-proof evaluation
+- Transparent scoring via automated comments
 
 ---
 
-## 📜 Rules
+## Rules
 
-1. **No external data**: Use only the provided dataset
-2. **No pre-trained models**: Train from scratch (pre-trained GNN embeddings not allowed)
+1. **No external data**: Use only the provided OGB MolBACE dataset
+2. **No pre-trained models**: Train from scratch; pre-trained molecular embeddings are not allowed
 3. **One submission per PR**: Each pull request should contain exactly one submission file
-4. **Best score kept**: Multiple submissions allowed; leaderboard shows your best score
-5. **Code sharing**: You may share code/ideas, but each participant must submit individually
+4. **Best score kept**: Multiple submissions allowed; the leaderboard shows your best score
+5. **Code sharing encouraged**: You may share code and ideas, but submit individually
 6. **Fair play**: Do not attempt to access test labels or exploit the evaluation system
 
 ---
 
-## ❓ FAQ
+## FAQ
 
 **Q: Can I use libraries other than PyTorch Geometric?**
-> Yes! You can use DGL, Spektral, or any other framework. Just make sure your final predictions are in the correct CSV format.
+> Yes. You can use DGL, Spektral, JAX, or any other framework. Ensure your final predictions follow the CSV format.
 
-**Q: How do I check my score before submitting?**
-> Use the validation set to tune your model. The validation labels are available for local testing.
+**Q: How do I test locally before submitting?**
+> Use the validation set to evaluate your model locally. Training labels are available via OGB; only test labels are hidden.
 
 **Q: Can I submit multiple times?**
-> Yes! The leaderboard will keep your best score.
+> Yes. The leaderboard keeps your best score. Each submission triggers a fresh evaluation.
+
+**Q: How does the automated scoring work?**
+> When you open a PR, GitHub Actions fetches the hidden test labels from a private repository, runs the scoring script, and comments on your PR with the result.
 
 **Q: When does the competition end?**
 > This is an ongoing challenge. Top performers will be contacted for the research opportunity.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Dataset: [Open Graph Benchmark](https://ogb.stanford.edu/)
-- Original BACE data: [MoleculeNet](https://moleculenet.org/)
+- **Dataset**: [Open Graph Benchmark](https://ogb.stanford.edu/)
+- **Original BACE data**: [MoleculeNet](https://moleculenet.org/)
 
 ---
 
-## 📚 References & Citations
+## References and Citations
 
-If you use this challenge or the methods implemented here, please consider citing the following papers:
+If you use this challenge or the methods implemented here, please cite the following:
 
 ### Dataset
 
@@ -330,38 +424,38 @@ If you use this challenge or the methods implemented here, please consider citin
 
 ---
 
-## 👏 Credits & Acknowledgments
+## Credits
 
 ### Dataset Creators
-- **Jure Leskovec** (Stanford University) - Open Graph Benchmark, GraphSAGE
-- **Weihua Hu** (Stanford University) - Open Graph Benchmark
-- **Zhenqin Wu** & **Vijay Pande** (Stanford University) - MoleculeNet
+- **Jure Leskovec** (Stanford University) — Open Graph Benchmark, GraphSAGE
+- **Weihua Hu** (Stanford University) — Open Graph Benchmark
+- **Zhenqin Wu** and **Vijay Pande** (Stanford University) — MoleculeNet
 
 ### GNN Architecture Authors
-- **William L. Hamilton**, **Rex Ying**, **Jure Leskovec** - GraphSAGE
-- **Thomas N. Kipf**, **Max Welling** - Graph Convolutional Networks
-- **Keyulu Xu**, **Weihua Hu**, **Jure Leskovec**, **Stefanie Jegelka** - Graph Isomorphism Network
+- **William L. Hamilton**, **Rex Ying**, **Jure Leskovec** — GraphSAGE
+- **Thomas N. Kipf**, **Max Welling** — Graph Convolutional Networks
+- **Keyulu Xu**, **Weihua Hu**, **Jure Leskovec**, **Stefanie Jegelka** — Graph Isomorphism Network
 
 ### Library Developers
-- **Matthias Fey**, **Jan Eric Lenssen** - PyTorch Geometric
-- **Deep Graph Library (DGL) Team** - DGL Framework
+- **Matthias Fey**, **Jan Eric Lenssen** — PyTorch Geometric
+- **Deep Graph Library (DGL) Team** — DGL Framework
 
 ### Special Thanks
-- **[BASIRA Lab](https://basira-lab.com/)** - For support and research collaboration
-- **Prof. Islem Rekik** (Imperial College London) - For mentorship, guidance, and access to resources
+- **[BASIRA Lab](https://basira-lab.com/)** — Research collaboration and support
+- **Prof. Islem Rekik** (Imperial College London) — Mentorship and guidance
 
 ### Competition Organizer
-- **Murat Kolic** - Sarajevo, Bosnia and Herzegovina 🇧🇦
+- **Murat Kolic** — Sarajevo, Bosnia and Herzegovina
 
 ---
 
-## 📧 Contact
+## Contact
 
-For questions or issues, please open a [GitHub Issue](../../issues) or contact the organizers.
+For questions or issues, please open a [GitHub Issue](../../issues).
 
 **Organizer:** Murat Kolic ([@muuki2](https://github.com/muuki2))  
 **Location:** Sarajevo, Bosnia and Herzegovina
 
 ---
 
-**Good luck! May the best GNN win! 🚀🧬**
+*Good luck. May the best GNN win.*
