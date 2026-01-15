@@ -17,6 +17,7 @@ Efficiency Metric: $\text{Efficiency} = \frac{F_1^2}{\log_{10}(\text{time}_{ms})
 | 5 | *Baseline-GraphSAGE* | 0.5835 | - | - | - | 2026-01-07 |
 | 6 | muuki2 | 0.5048 | - | - | - | 2026-01-07 |
 | 7 | ImEldin | 0.5046 | - | - | - | 2026-01-15 |
+| 8 | DinoFazlic | 0.5003 | - | - | - | 2026-01-15 |
 
 ---
 
@@ -29,4 +30,4 @@ Efficiency Metric: $\text{Efficiency} = \frac{F_1^2}{\log_{10}(\text{time}_{ms})
 
 *Italic entries are baseline models provided by organizers.*
 
-*Last updated: 2026-01-15 20:49 UTC*
+*Last updated: 2026-01-15 21:00 UTC*
