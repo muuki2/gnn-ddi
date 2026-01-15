@@ -1,0 +1,360 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "GNN-DDI Competition Submission Metadata",
+    "description": "Schema for submission metadata in the GNN Mini-Competition on Molecular Graphs",
+    "type": "object",
+    "required": ["team_name", "model_name", "submission_date"],
+    "properties": {
+        "team_name": {
+            "type": "string",
+            "description": "Name of the team or individual making the submission",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "model_name": {
+            "type": "string",
+            "description": "Name of the model architecture",
+            "minLength": 1,
+            "maxLength": 100,
+            "examples": ["GCN", "GIN", "GraphSAGE", "DMPNN", "SpectralGNN"]
+        },
+        "submission_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date of submission in YYYY-MM-DD format"
+        },
+        "model_architecture": {
+            "type": "object",
+            "description": "Detailed model architecture specification",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "Base GNN architecture type",
+                    "enum": ["GCN", "GIN", "GAT", "GraphSAGE", "DMPNN", "SpectralGNN", "MPN", "Other"]
+                },
+                "num_layers": {
+                    "type": "integer",
+                    "description": "Number of GNN layers",
+                    "minimum": 1,
+                    "maximum": 20
+                },
+                "hidden_dim": {
+                    "type": "integer",
+                    "description": "Hidden dimension size",
+                    "minimum": 8,
+                    "maximum": 2048
+                },
+                "output_dim": {
+                    "type": "integer",
+                    "description": "Output dimension (typically 2 for binary classification)",
+                    "default": 2
+                },
+                "pooling": {
+                    "type": "string",
+                    "description": "Graph pooling method",
+                    "enum": ["mean", "sum", "max", "attention", "set2set", "hierarchical"],
+                    "default": "mean"
+                },
+                "dropout": {
+                    "type": "number",
+                    "description": "Dropout rate",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "activation": {
+                    "type": "string",
+                    "description": "Activation function",
+                    "enum": ["relu", "leaky_relu", "elu", "gelu", "silu", "tanh"],
+                    "default": "relu"
+                },
+                "use_batch_norm": {
+                    "type": "boolean",
+                    "description": "Whether batch normalization is used",
+                    "default": false
+                },
+                "use_layer_norm": {
+                    "type": "boolean",
+                    "description": "Whether layer normalization is used",
+                    "default": false
+                },
+                "skip_connections": {
+                    "type": "boolean",
+                    "description": "Whether skip/residual connections are used",
+                    "default": false
+                },
+                "edge_features": {
+                    "type": "boolean",
+                    "description": "Whether edge features are used",
+                    "default": false
+                }
+            },
+            "required": ["type", "num_layers", "hidden_dim"]
+        },
+        "training_config": {
+            "type": "object",
+            "description": "Training configuration and hyperparameters",
+            "properties": {
+                "optimizer": {
+                    "type": "string",
+                    "description": "Optimizer used for training",
+                    "enum": ["adam", "adamw", "sgd", "rmsprop", "adagrad"],
+                    "default": "adam"
+                },
+                "learning_rate": {
+                    "type": "number",
+                    "description": "Initial learning rate",
+                    "minimum": 1e-6,
+                    "maximum": 1.0
+                },
+                "weight_decay": {
+                    "type": "number",
+                    "description": "L2 regularization weight",
+                    "minimum": 0.0,
+                    "default": 0.0
+                },
+                "batch_size": {
+                    "type": "integer",
+                    "description": "Training batch size",
+                    "minimum": 1,
+                    "maximum": 512
+                },
+                "epochs": {
+                    "type": "integer",
+                    "description": "Number of training epochs",
+                    "minimum": 1,
+                    "maximum": 10000
+                },
+                "lr_scheduler": {
+                    "type": "string",
+                    "description": "Learning rate scheduler",
+                    "enum": ["none", "step", "cosine", "plateau", "warmup_cosine"],
+                    "default": "none"
+                },
+                "early_stopping": {
+                    "type": "boolean",
+                    "description": "Whether early stopping was used",
+                    "default": false
+                },
+                "early_stopping_patience": {
+                    "type": "integer",
+                    "description": "Patience for early stopping (epochs)",
+                    "minimum": 1
+                },
+                "gradient_clipping": {
+                    "type": "number",
+                    "description": "Maximum gradient norm for clipping",
+                    "minimum": 0.0
+                },
+                "loss_function": {
+                    "type": "string",
+                    "description": "Loss function used",
+                    "enum": ["cross_entropy", "focal", "weighted_ce", "label_smoothing"],
+                    "default": "cross_entropy"
+                },
+                "class_weights": {
+                    "type": "array",
+                    "description": "Class weights for imbalanced data",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
+        "performance_metrics": {
+            "type": "object",
+            "description": "Performance metrics from evaluation",
+            "properties": {
+                "macro_f1": {
+                    "type": "number",
+                    "description": "Macro F1 score on test set",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "accuracy": {
+                    "type": "number",
+                    "description": "Classification accuracy",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "precision": {
+                    "type": "number",
+                    "description": "Macro precision",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "recall": {
+                    "type": "number",
+                    "description": "Macro recall",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "auroc": {
+                    "type": "number",
+                    "description": "Area under ROC curve",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "auprc": {
+                    "type": "number",
+                    "description": "Area under Precision-Recall curve",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "val_macro_f1": {
+                    "type": "number",
+                    "description": "Macro F1 on validation set",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                }
+            }
+        },
+        "efficiency_metrics": {
+            "type": "object",
+            "description": "Computational efficiency metrics",
+            "properties": {
+                "total_params": {
+                    "type": "integer",
+                    "description": "Total number of model parameters",
+                    "minimum": 0
+                },
+                "trainable_params": {
+                    "type": "integer",
+                    "description": "Number of trainable parameters",
+                    "minimum": 0
+                },
+                "inference_time_ms": {
+                    "type": "number",
+                    "description": "Average inference time per batch in milliseconds",
+                    "minimum": 0.0
+                },
+                "training_time_minutes": {
+                    "type": "number",
+                    "description": "Total training time in minutes",
+                    "minimum": 0.0
+                },
+                "peak_memory_mb": {
+                    "type": "number",
+                    "description": "Peak memory usage during inference in MB",
+                    "minimum": 0.0
+                },
+                "flops": {
+                    "type": "integer",
+                    "description": "Estimated FLOPs per forward pass",
+                    "minimum": 0
+                },
+                "throughput_graphs_per_sec": {
+                    "type": "number",
+                    "description": "Graphs processed per second",
+                    "minimum": 0.0
+                },
+                "efficiency_score": {
+                    "type": "number",
+                    "description": "Efficiency = F1² / (log10(time_ms) * log10(params))",
+                    "minimum": 0.0
+                }
+            }
+        },
+        "robustness_metrics": {
+            "type": "object",
+            "description": "Adversarial robustness evaluation metrics",
+            "properties": {
+                "clean_accuracy": {
+                    "type": "number",
+                    "description": "Accuracy on clean data",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "robust_accuracy": {
+                    "type": "number",
+                    "description": "Accuracy under adversarial perturbation",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "attack_success_rate": {
+                    "type": "number",
+                    "description": "Fraction of successful attacks",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "perturbation_budget": {
+                    "type": "number",
+                    "description": "Perturbation budget (epsilon)",
+                    "minimum": 0.0
+                }
+            }
+        },
+        "uncertainty_metrics": {
+            "type": "object",
+            "description": "Uncertainty quantification metrics",
+            "properties": {
+                "expected_calibration_error": {
+                    "type": "number",
+                    "description": "ECE - calibration measure",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "brier_score": {
+                    "type": "number",
+                    "description": "Brier score for probabilistic predictions",
+                    "minimum": 0.0,
+                    "maximum": 2.0
+                },
+                "coverage_90": {
+                    "type": "number",
+                    "description": "Empirical coverage at 90% confidence level",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "avg_prediction_set_size": {
+                    "type": "number",
+                    "description": "Average size of conformal prediction sets",
+                    "minimum": 0.0
+                }
+            }
+        },
+        "reproducibility": {
+            "type": "object",
+            "description": "Reproducibility information",
+            "properties": {
+                "random_seed": {
+                    "type": "integer",
+                    "description": "Random seed used for reproducibility"
+                },
+                "pytorch_version": {
+                    "type": "string",
+                    "description": "PyTorch version",
+                    "pattern": "^\\d+\\.\\d+(\\.\\d+)?$"
+                },
+                "pyg_version": {
+                    "type": "string",
+                    "description": "PyTorch Geometric version"
+                },
+                "cuda_version": {
+                    "type": "string",
+                    "description": "CUDA version (if GPU used)"
+                },
+                "gpu_model": {
+                    "type": "string",
+                    "description": "GPU model used for training"
+                },
+                "deterministic": {
+                    "type": "boolean",
+                    "description": "Whether deterministic algorithms were used",
+                    "default": false
+                }
+            }
+        },
+        "notes": {
+            "type": "string",
+            "description": "Additional notes or comments about the submission",
+            "maxLength": 1000
+        },
+        "code_repository": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to public code repository (optional)"
+        }
+    },
+    "additionalProperties": false
+}

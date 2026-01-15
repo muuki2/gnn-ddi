@@ -3,17 +3,28 @@ Scoring Script for GNN Molecular Graph Classification Challenge
 ================================================================
 
 This script evaluates a participant's submission against the ground truth
-test labels and computes the macro F1 score.
+test labels and computes the macro F1 score along with efficiency metrics.
 
 Usage:
-    python scoring_script.py <submission_file>
+    python scoring_script.py <submission_file> [--metadata <metadata.yaml>]
     
 Example:
     python scoring_script.py submissions/participant_submission.csv
+    python scoring_script.py submissions/submission.csv --metadata submissions/metadata.yaml
     
 The submission file should have two columns:
     - id: The molecule ID (matching those in test.csv)
     - target: The predicted label (0 or 1)
+
+Optional metadata file (YAML) can include:
+    - inference_time_ms: Average inference time per batch
+    - total_params: Total model parameters
+    - model_name: Name of the model architecture
+
+Metrics Computed:
+    - Macro F1 Score (primary metric)
+    - Accuracy, Precision, Recall
+    - Efficiency Score: F1² / (log₁₀(time_ms) × log₁₀(params))
 
 Note: The ground truth labels are stored securely and not publicly available.
 This script is used by GitHub Actions for automated evaluation.
@@ -21,8 +32,20 @@ This script is used by GitHub Actions for automated evaluation.
 
 import sys
 import os
+import math
+import json
+import argparse
+from typing import Dict, Any, Optional
+from pathlib import Path
 import pandas as pd
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
+
+# Try to import yaml for metadata parsing
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
 
 
 def validate_submission(submission_df, truth_df):
@@ -101,18 +124,133 @@ def compute_score(submission_df, truth_df):
     return metrics
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python scoring_script.py <submission_file>")
-        print("Example: python scoring_script.py submissions/my_submission.csv")
-        sys.exit(1)
+def load_metadata(metadata_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Load submission metadata from YAML or JSON file.
     
-    submission_file = sys.argv[1]
+    Args:
+        metadata_path: Path to metadata file
+        
+    Returns:
+        Dictionary with metadata or None if file doesn't exist
+    """
+    if not os.path.exists(metadata_path):
+        return None
+    
+    ext = Path(metadata_path).suffix.lower()
+    
+    with open(metadata_path, 'r') as f:
+        if ext in ['.yaml', '.yml']:
+            if not YAML_AVAILABLE:
+                print("Warning: PyYAML not installed. Cannot parse YAML metadata.")
+                return None
+            return yaml.safe_load(f)
+        elif ext == '.json':
+            return json.load(f)
+        else:
+            print(f"Warning: Unknown metadata format: {ext}")
+            return None
+
+
+def compute_efficiency_score(
+    f1_score: float,
+    inference_time_ms: float,
+    total_params: int
+) -> float:
+    """
+    Compute the efficiency score.
+    
+    Efficiency = F1² / (log₁₀(time_ms) × log₁₀(params))
+    
+    This metric balances prediction quality with computational cost:
+    - Higher F1 → better efficiency
+    - Lower inference time → better efficiency
+    - Fewer parameters → better efficiency
+    
+    The logarithmic scaling on time and params ensures:
+    - 10x speedup gives same benefit regardless of base speed
+    - Model size differences are fairly weighted
+    
+    Args:
+        f1_score: Macro F1 score
+        inference_time_ms: Average inference time in milliseconds
+        total_params: Total number of model parameters
+        
+    Returns:
+        Efficiency score (higher is better)
+    """
+    # Handle edge cases
+    if f1_score <= 0:
+        return 0.0
+    
+    # Ensure positive values for log
+    time_ms = max(inference_time_ms, 0.1)  # Minimum 0.1ms
+    params = max(total_params, 100)  # Minimum 100 params
+    
+    # Compute log terms
+    log_time = math.log10(time_ms)
+    log_params = math.log10(params)
+    
+    # Handle edge case where log product is very small or zero
+    denominator = log_time * log_params
+    if denominator <= 0:
+        # Use only params if time is < 1ms
+        denominator = max(log_params, 1.0)
+    
+    efficiency = (f1_score ** 2) / denominator
+    
+    return round(efficiency, 6)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='GNN Molecular Graph Classification Challenge - Scoring Script'
+    )
+    parser.add_argument(
+        'submission_file',
+        type=str,
+        help='Path to submission CSV file'
+    )
+    parser.add_argument(
+        '--metadata',
+        type=str,
+        default=None,
+        help='Path to metadata YAML/JSON file with efficiency metrics'
+    )
+    parser.add_argument(
+        '--output-json',
+        type=str,
+        default=None,
+        help='Path to output JSON file with all metrics'
+    )
+    
+    args = parser.parse_args()
+    
+    submission_file = args.submission_file
     
     # Check if submission file exists
     if not os.path.exists(submission_file):
         print(f"Error: Submission file not found: {submission_file}")
         sys.exit(1)
+    
+    # Load metadata if provided
+    metadata = None
+    if args.metadata:
+        metadata = load_metadata(args.metadata)
+        if metadata:
+            print(f"Loaded metadata from: {args.metadata}")
+    
+    # Auto-detect metadata file if not provided
+    if metadata is None:
+        # Look for metadata file with same name as submission
+        base_name = Path(submission_file).stem
+        for ext in ['.yaml', '.yml', '.json']:
+            meta_path = Path(submission_file).parent / f"{base_name}_metadata{ext}"
+            if meta_path.exists():
+                metadata = load_metadata(str(meta_path))
+                if metadata:
+                    print(f"Auto-detected metadata from: {meta_path}")
+                    break
     
     # Load ground truth labels
     # In production, this file is stored securely and populated by GitHub Actions
@@ -148,6 +286,25 @@ def main():
     print("\nComputing metrics...")
     metrics = compute_score(submission_df, truth_df)
     
+    # Compute efficiency score if metadata is available
+    efficiency_score = None
+    inference_time_ms = None
+    total_params = None
+    
+    if metadata:
+        inference_time_ms = metadata.get('inference_time_ms') or metadata.get('efficiency_metrics', {}).get('inference_time_ms')
+        total_params = metadata.get('total_params') or metadata.get('efficiency_metrics', {}).get('total_params')
+        
+        if inference_time_ms and total_params:
+            efficiency_score = compute_efficiency_score(
+                metrics['macro_f1'],
+                inference_time_ms,
+                total_params
+            )
+            metrics['efficiency_score'] = efficiency_score
+            metrics['inference_time_ms'] = inference_time_ms
+            metrics['total_params'] = total_params
+    
     # Display results
     print("\n" + "="*60)
     print("RESULTS")
@@ -160,6 +317,14 @@ def main():
     print(f"  - F1 (class 0): {metrics['f1_class_0']:.4f}")
     print(f"  - F1 (class 1): {metrics['f1_class_1']:.4f}")
     
+    # Display efficiency metrics if available
+    if efficiency_score is not None:
+        print(f"\n⚡ Efficiency Metrics:")
+        print(f"  - Inference Time: {inference_time_ms:.2f} ms")
+        print(f"  - Parameters: {total_params:,}")
+        print(f"  - Efficiency Score: {efficiency_score:.4f}")
+        print(f"    (Formula: F1² / (log₁₀(time) × log₁₀(params)))")
+    
     print(f"\nConfusion Matrix:")
     cm = metrics['confusion_matrix']
     print(f"  Predicted:    0      1")
@@ -171,6 +336,32 @@ def main():
     # Output the main score for GitHub Actions to capture
     # This line is parsed by update_leaderboard.py
     print(f"SCORE:{metrics['macro_f1']:.6f}")
+    
+    # Output efficiency metrics if available
+    if efficiency_score is not None:
+        print(f"EFFICIENCY:{efficiency_score:.6f}")
+        print(f"PARAMS:{total_params}")
+        print(f"TIME_MS:{inference_time_ms:.2f}")
+    
+    # Write output JSON if requested
+    if args.output_json:
+        output_data = {
+            'macro_f1': metrics['macro_f1'],
+            'accuracy': metrics['accuracy'],
+            'precision_macro': metrics['precision_macro'],
+            'recall_macro': metrics['recall_macro'],
+            'f1_class_0': metrics['f1_class_0'],
+            'f1_class_1': metrics['f1_class_1'],
+            'confusion_matrix': metrics['confusion_matrix']
+        }
+        if efficiency_score is not None:
+            output_data['efficiency_score'] = efficiency_score
+            output_data['inference_time_ms'] = inference_time_ms
+            output_data['total_params'] = total_params
+        
+        with open(args.output_json, 'w') as f:
+            json.dump(output_data, f, indent=2)
+        print(f"\nMetrics saved to: {args.output_json}")
     
     return metrics['macro_f1']
 

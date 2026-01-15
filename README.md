@@ -27,6 +27,21 @@ Your goal is to learn a graph-level representation and predict a **binary label*
 
 ---
 
+## Table of Contents
+
+1. [Dataset](#dataset)
+2. [Evaluation Metrics](#evaluation-metrics)
+3. [Getting Started](#getting-started)
+4. [Baseline Architectures](#baseline-gnn-architectures)
+5. [Advanced Architectures](#advanced-gnn-architectures)
+6. [Submission Process](#submission-process)
+7. [Evaluation Dimensions](#evaluation-dimensions)
+8. [Repository Structure](#repository-structure)
+9. [Rules](#rules)
+10. [References](#references-and-citations)
+
+---
+
 ## Dataset
 
 We use the **OGB MolBACE** dataset from the [Open Graph Benchmark](https://ogb.stanford.edu/):
@@ -79,6 +94,23 @@ $$\text{Precision}_c = \frac{TP_c}{TP_c + FP_c}, \quad \text{Recall}_c = \frac{T
 - Penalizes poor performance on the minority class
 - More challenging than accuracy for imbalanced datasets
 - Standard metric in molecular property prediction benchmarks
+
+### Secondary Metric: Efficiency Score
+
+We also track computational efficiency to encourage practical solutions:
+
+$$\text{Efficiency} = \frac{F_1^2}{\log_{10}(\text{time}_{ms}) \times \log_{10}(\text{params})}$$
+
+where:
+- $\text{time}_{ms}$ = average inference time per batch (milliseconds)
+- $\text{params}$ = total number of trainable parameters
+
+**Interpretation:**
+- Logarithmic scaling ensures 10x speedup always gives the same benefit
+- Squaring F1 heavily rewards prediction quality
+- Balances accuracy with practical deployment considerations
+
+The leaderboard shows both Macro F1 (primary ranking) and Efficiency (secondary metric).
 
 ---
 
@@ -185,23 +217,55 @@ When you open a Pull Request, the system automatically:
 
 The test labels are **never exposed** to participants — they are fetched from a private repository during GitHub Actions execution, ensuring fair evaluation.
 
+### Optional: Efficiency Metadata
+
+To appear on the leaderboard with efficiency metrics, include a metadata file:
+
+**Format:** Create `submissions/your_username_metadata.yaml`:
+
+```yaml
+team_name: your_team
+model_name: MyGNN
+model_architecture:
+  type: GCN
+  num_layers: 3
+  hidden_dim: 64
+efficiency_metrics:
+  inference_time_ms: 5.2
+  total_params: 45000
+```
+
+Use `evaluation/speed_benchmark.py` to measure these values:
+
+```python
+from evaluation.speed_benchmark import ModelProfiler
+
+profiler = ModelProfiler(model)
+metrics = profiler.profile_model(loader, device)
+print(f"Inference time: {metrics.mean_inference_time_ms} ms")
+print(f"Parameters: {metrics.total_params}")
+```
+
+See `schema/submission_metadata.json` for the full schema.
+
 ### Submission Format
 
 ```
 submissions/
-├── sample_submission.csv   # Example format (152 predictions)
-└── your_username.csv       # Your submission
+├── sample_submission.csv     # Example format (152 predictions)
+├── your_username.csv         # Your submission
+└── your_username_metadata.yaml  # Optional efficiency metadata
 ```
 
 ---
 
 ## Current Leaderboard
 
-| Rank | Participant | Macro F1 Score |
-|------|-------------|----------------|
-| 1 | *Baseline-GCN* | 0.6153 |
-| 2 | *Baseline-GIN* | 0.6103 |
-| 3 | *Baseline-GraphSAGE* | 0.5835 |
+| Rank | Participant | Macro-F1 | Efficiency | Params |
+|------|-------------|----------|------------|--------|
+| 🥇 1 | *Baseline-GCN* | 0.6153 | - | 45K |
+| 🥈 2 | *Baseline-GIN* | 0.6103 | - | 52K |
+| 🥉 3 | *Baseline-GraphSAGE* | 0.5835 | - | 48K |
 
 [View Full Leaderboard](leaderboard.md)
 
@@ -245,22 +309,167 @@ followed by a linear classifier: $\hat{y} = \sigma(\mathbf{w}^\top \mathbf{h}_G 
 
 ---
 
+## Advanced GNN Architectures
+
+Beyond the baselines, we provide two advanced architectures with stronger mathematical foundations.
+
+### Directed Message Passing Neural Network (D-MPNN)
+
+D-MPNN (Yang et al., 2019) is an edge-centric GNN designed for molecular graphs that prevents "message backflow" — a key limitation of standard MPNNs.
+
+**Message Passing:**
+
+$$\mathbf{m}_{uv}^{(l+1)} = \sum_{w \in \mathcal{N}(u) \setminus \{v\}} f\left(\mathbf{h}_u^{(l)}, \mathbf{m}_{wu}^{(l)}, \mathbf{e}_{uv}\right)$$
+
+$$\mathbf{h}_v^{(l+1)} = g\left(\mathbf{h}_v^{(l)}, \sum_{u \in \mathcal{N}(v)} \mathbf{m}_{uv}^{(l+1)}\right)$$
+
+**Key Features:**
+- Messages flow along directed edges
+- Prevents information from immediately flowing back to source
+- Edge features are first-class citizens
+- Particularly effective for molecular property prediction
+
+**Implementation:** `advanced_baselines/dmpnn.py`
+
+### Spectral GNN with Laplacian Regularization
+
+Our Spectral GNN operates in the graph frequency domain using Chebyshev polynomial approximations.
+
+**Chebyshev Convolution:**
+
+$$\mathbf{x} * g_\theta \approx \sum_{k=0}^{K-1} \theta_k T_k(\tilde{\mathbf{L}}) \mathbf{x}$$
+
+where:
+- $\tilde{\mathbf{L}} = \frac{2}{\lambda_{max}} \mathbf{L} - \mathbf{I}$ is the scaled Laplacian
+- $T_k$ are Chebyshev polynomials: $T_0 = 1, T_1 = x, T_k = 2xT_{k-1} - T_{k-2}$
+- $\theta_k$ are learnable spectral coefficients
+
+**Laplacian Regularization Loss:**
+
+We minimize the Dirichlet energy to encourage smoothness:
+
+$$\mathcal{L}_{smooth} = \frac{1}{|V|} \mathbf{h}^\top \mathbf{L} \mathbf{h} = \frac{1}{|V|} \sum_{(i,j) \in E} \|\mathbf{h}_i - \mathbf{h}_j\|^2$$
+
+**Laplacian Positional Encodings:**
+
+Optional positional features from Laplacian eigenvectors:
+
+$$\mathbf{L} \mathbf{u}_k = \lambda_k \mathbf{u}_k$$
+
+The first $k$ eigenvectors provide structural position information.
+
+**Implementation:** `advanced_baselines/spectral_gnn.py`
+
+---
+
+## Evaluation Dimensions
+
+We evaluate submissions along multiple dimensions beyond raw accuracy.
+
+### 1. Prediction Quality (Primary)
+
+**Macro F1 Score** is the primary ranking metric (see [Evaluation Metrics](#evaluation-metric)).
+
+### 2. Computational Efficiency
+
+Tracked via the efficiency formula above. We record:
+- Inference time (ms per batch)
+- Parameter count
+- Memory usage
+- FLOPs estimate
+
+Use the profiler in `evaluation/speed_benchmark.py` to measure your model.
+
+### 3. Uncertainty Quantification
+
+Good models should know when they don't know. We provide tools to evaluate:
+
+**MC Dropout:** Epistemic uncertainty via multiple forward passes with dropout enabled:
+
+$$\sigma^2_{\text{epistemic}} = \frac{1}{T} \sum_{t=1}^{T} \hat{y}_t^2 - \left(\frac{1}{T} \sum_{t=1}^{T} \hat{y}_t\right)^2$$
+
+**Conformal Prediction:** Distribution-free prediction sets with coverage guarantees:
+
+$$C(x) = \{y : s(x, y) \leq \hat{q}\}$$
+
+where $\hat{q}$ is calibrated on a holdout set to achieve $(1-\alpha)$ coverage.
+
+**Temperature Scaling:** Post-hoc calibration via:
+
+$$p(y|x) = \text{softmax}(z/T)$$
+
+with temperature $T$ optimized on validation data.
+
+**Metrics:**
+- Expected Calibration Error (ECE)
+- Brier Score
+- Empirical Coverage at 90%
+
+**Implementation:** `evaluation/uncertainty.py`
+
+### 4. Adversarial Robustness
+
+We evaluate model robustness to graph perturbations:
+
+**Attack Types:**
+1. **Random Edge Perturbation:** Add/remove random edges
+2. **Gradient-Based Attack:** Remove high-importance edges
+3. **Feature Noise:** Gaussian noise on node features
+4. **Feature Masking:** Zero out random features
+
+**Metrics:**
+- Robust Accuracy under attack
+- Attack Success Rate (ASR)
+
+$$\text{ASR} = \frac{|\{x : f(x + \delta) \neq y, f(x) = y\}|}{|\{x : f(x) = y\}|}$$
+
+**Implementation:** `evaluation/adversarial.py`
+
+### 5. Pareto Efficiency
+
+We visualize the accuracy-efficiency trade-off:
+
+A model is **Pareto optimal** if no other model is:
+- Better in accuracy AND equally efficient, OR
+- Equally accurate AND more efficient, OR
+- Better in both
+
+**Hypervolume Indicator:**
+
+$$\text{HV}(S) = \text{volume dominated by Pareto front } S$$
+
+Higher hypervolume indicates better overall performance.
+
+**Visualization:** `visualization/pareto_plot.py`
+
+---
+
 ## Tips and Ideas
 
 ### Additional GNN Architectures
 - **GAT** (Graph Attention Network) — attention-weighted message passing
 - **MPNN** (Message Passing Neural Network) — edge-conditioned convolutions
 - **AttentiveFP** — designed specifically for molecular property prediction
+- **D-MPNN** — see our implementation in `advanced_baselines/dmpnn.py`
+- **Spectral GNN** — see our implementation in `advanced_baselines/spectral_gnn.py`
 - **Ensemble methods** — combine multiple architectures
 
 ### Techniques to Consider
 - **Class weighting** — address class imbalance via weighted cross-entropy
 - **Focal loss** — down-weight easy examples, focus on hard ones
+- **Laplacian regularization** — encourage smooth representations (see Spectral GNN)
 - **Data augmentation** — random edge dropping, node feature masking
 - **Different pooling** — sum pooling, attention-based pooling, Set2Set
 - **Virtual nodes** — add a global node connected to all atoms
+- **Positional encodings** — Laplacian eigenvectors, random walk features
 - **Learning rate scheduling** — cosine annealing, warm restarts
 - **Early stopping** — monitor validation F1 to prevent overfitting
+
+### Evaluation Tools
+- **Speed benchmark**: `evaluation/speed_benchmark.py` — profile inference time
+- **Uncertainty**: `evaluation/uncertainty.py` — MC Dropout, Conformal Prediction
+- **Adversarial**: `evaluation/adversarial.py` — robustness testing
+- **Visualization**: `visualization/pareto_plot.py` — Pareto front analysis
 
 ### Resources
 - [PyTorch Geometric Documentation](https://pytorch-geometric.readthedocs.io/)
@@ -288,12 +497,25 @@ gnn-ddi/
 ├── starter_code/
 │   ├── baseline.py         # Baseline models (GraphSAGE, GCN, GIN)
 │   └── requirements.txt    # Python dependencies
+├── advanced_baselines/
+│   ├── dmpnn.py            # Directed Message Passing NN
+│   └── spectral_gnn.py     # Spectral GNN with Laplacian regularization
+├── evaluation/
+│   ├── speed_benchmark.py  # Performance profiling
+│   ├── uncertainty.py      # Uncertainty quantification
+│   └── adversarial.py      # Adversarial robustness tests
+├── visualization/
+│   └── pareto_plot.py      # Pareto front visualization
+├── schema/
+│   └── submission_metadata.json  # Metadata JSON schema
 ├── scripts/
 │   └── generate_labels.py  # Label generation utility
+├── docs/
+│   └── PRIVATE_REPO_SETUP.md  # Private repo setup guide
 ├── .github/
 │   └── workflows/
 │       └── evaluate.yml    # Automated scoring workflow
-├── scoring_script.py       # Evaluation script (Macro F1)
+├── scoring_script.py       # Evaluation script (Macro F1 + Efficiency)
 ├── update_leaderboard.py   # Leaderboard update utility
 ├── leaderboard.md          # Current standings
 └── README.md
@@ -407,6 +629,55 @@ If you use this challenge or the methods implemented here, please cite the follo
   author={Xu, Keyulu and Hu, Weihua and Leskovec, Jure and Jegelka, Stefanie},
   booktitle={International Conference on Learning Representations},
   year={2019}
+}
+```
+
+**Directed Message Passing Neural Network (D-MPNN)**
+```bibtex
+@article{yang2019analyzing,
+  title={Analyzing Learned Molecular Representations for Property Prediction},
+  author={Yang, Kevin and Swanson, Kyle and Jin, Wengong and Coley, Connor and 
+          Eiden, Philipp and Gao, Hua and Guzman-Perez, Angel and Hopper, Timothy and 
+          Kelley, Brian and Mathea, Miriam and others},
+  journal={Journal of Chemical Information and Modeling},
+  volume={59},
+  number={8},
+  pages={3370--3388},
+  year={2019},
+  publisher={ACS Publications}
+}
+```
+
+**Spectral Graph Theory**
+```bibtex
+@book{chung1997spectral,
+  title={Spectral Graph Theory},
+  author={Chung, Fan RK},
+  year={1997},
+  publisher={American Mathematical Society}
+}
+```
+
+**Chebyshev Spectral Convolutions**
+```bibtex
+@inproceedings{defferrard2016convolutional,
+  title={Convolutional Neural Networks on Graphs with Fast Localized Spectral Filtering},
+  author={Defferrard, Micha{\"e}l and Bresson, Xavier and Vandergheynst, Pierre},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={29},
+  year={2016}
+}
+```
+
+**Conformal Prediction**
+```bibtex
+@article{romano2020classification,
+  title={Classification with Valid and Adaptive Coverage},
+  author={Romano, Yaniv and Sesia, Matteo and Candes, Emmanuel},
+  journal={Advances in Neural Information Processing Systems},
+  volume={33},
+  pages={3581--3591},
+  year={2020}
 }
 ```
 

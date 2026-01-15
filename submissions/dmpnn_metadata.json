@@ -1,0 +1,10 @@
+{
+  "model_name": "D-MPNN",
+  "architecture": "Directional Message Passing Neural Network",
+  "parameters": 53602,
+  "inference_time_ms": 62.37,
+  "validation_f1": 0.5489,
+  "hidden_dim": 64,
+  "num_layers": 3,
+  "framework": "PyTorch Geometric"
+}

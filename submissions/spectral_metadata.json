@@ -1,0 +1,12 @@
+{
+  "model_name": "Spectral-GNN",
+  "architecture": "Spectral GNN with Chebyshev Convolutions",
+  "parameters": 40354,
+  "inference_time_ms": 4.43,
+  "validation_f1": 0.549,
+  "hidden_dim": 64,
+  "num_layers": 3,
+  "chebyshev_order": 3,
+  "laplacian_weight": 0.01,
+  "framework": "PyTorch Geometric"
+}
